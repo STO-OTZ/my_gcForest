@@ -34,31 +34,35 @@ class ProbRandomForestClassifier(RandomForestClassifier):
     def predict(self, X):
         return RandomForestClassifier.predict_proba(self, X)
 
-# MultiGrainedScaner
+train_size = 1000
+# gcForest
 
+# Multi-Grained Scan Step
 Scaner1 = MultiGrainedScaner(ProbRandomForestClassifier(), scan_params_list, sliding_ratio = 1./4)
 Scaner2 = MultiGrainedScaner(ProbRandomForestClassifier(), scan_params_list, sliding_ratio = 1./9)
 Scaner3 = MultiGrainedScaner(ProbRandomForestClassifier(), scan_params_list, sliding_ratio = 1./16)
 
-X_train_scan =np.hstack([scaner.scan_fit(X_train[:1000].reshape((1000,28,28)), y_train[:1000])
-                             for scaner in [Scaner1]])#,Scaner2,Scaner3]])
-X_test_scan = np.hstack([scaner.scan_predict(X_test.reshape((10000,28,28)))
-                             for scaner in [Scaner1]])#,Scaner2,Scaner3]])
+X_train_scan =np.hstack([scaner.scan_fit(X_train[:train_size].reshape((train_size,28,28)), y_train[:train_size])
+                             for scaner in [Scaner1,Scaner2,Scaner3][:1]])
+X_test_scan = np.hstack([scaner.scan_predict(X_test.reshape((len(X_test),28,28)))
+                             for scaner in [Scaner1,Scaner2,Scaner3][:1]])
 
-# gcForest
+# Cascade RandomForest Step
 CascadeRF = CascadeForest(ProbRandomForestClassifier(),cascade_params_list)
-CascadeRF.fit(X_train_scan, y_train[:1000])
-y_pre = CascadeRF.predict(X_test_scan)
-print(calc_accuracy(y_pre,y_test))
+CascadeRF.fit(X_train_scan, y_train[:train_size])
+y_pre_staged = CascadeRF.predict_staged(X_test_scan)
+test_accuracy_staged = np.apply_along_axis(lambda y_pre: calc_accuracy(y_pre,y_test), 1, y_pre_staged)
+print('\n'.join('level {}, test accuracy: {}'.format(i+1,test_accuracy_staged[i]) for i in range(len(test_accuracy_staged))))
 
-#CascadeRF baseline
-CascadeRF = CascadeForest(ProbRandomForestClassifier(),cascade_params_list,k_fold=3)
-CascadeRF.fit(X_train[:1000], y_train[:1000])
-y_pre = CascadeRF.predict(X_test)
-print(calc_accuracy(y_pre,y_test))
+# CascadeRF baseline
+BaseCascadeRF = CascadeForest(ProbRandomForestClassifier(),cascade_params_list,k_fold=3)
+BaseCascadeRF.fit(X_train[:train_size], y_train[:train_size])
+y_pre_staged = BaseCascadeRF.predict_staged(X_test)
+test_accuracy_staged = np.apply_along_axis(lambda y_pre: calc_accuracy(y_pre,y_test), 1, y_pre_staged)
+print('\n'.join('level {}, test accuracy: {}'.format(i+1,test_accuracy_staged[i]) for i in range(len(test_accuracy_staged))))
 
 # RF baseline
 RF = RandomForestClassifier(n_estimators=1000)
-RF.fit(X_train[:1000], y_train[:1000])
+RF.fit(X_train[:train_size], y_train[:train_size])
 y_pre = RF.predict(X_test)
 print(calc_accuracy(y_pre,y_test))

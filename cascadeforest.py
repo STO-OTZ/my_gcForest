@@ -1,5 +1,6 @@
 import numpy as np
-from sklearn.cross_validation import cross_val_predict as cvp
+from sklearn.model_selection import cross_val_predict as cvp
+
 
 class CascadeForest():
     def __init__(self, base_estimator, params_list, k_fold=3, evaluate=lambda pre, y: float(sum(pre == y)) / len(y)):
@@ -45,8 +46,7 @@ class CascadeForest():
 
         # cascade step
         while True:
-            print
-            'level {}, CV accuracy: {}'.format(len(self.estimators_levels), self.max_accuracy)
+            print('level {}, CV accuracy: {}'.format(len(self.estimators_levels), self.max_accuracy))
             estimators = [klass(**params) for params in self.params_list]
             self.estimators_levels.append(estimators)
             predictions = []
@@ -70,7 +70,10 @@ class CascadeForest():
                 self.estimators_levels.pop()
                 break
 
-    def predict_proba(self, X):
+    def predict_proba_staged(self, X):
+        # init ouput, shape = nlevel * nsample * nclass
+        self.proba_staged = np.zeros((len(self.estimators_levels), len(X), self.n_classes))
+
         # first level
         estimators = self.estimators_levels[0]
         predictions = []
@@ -78,6 +81,7 @@ class CascadeForest():
             predict_ = estimator.predict(X)
             predictions.append(predict_)
         attr_to_next_level = np.hstack(predictions)
+        self.proba_staged[0] = np.array(predictions).mean(axis=0)  # 不同estimator求平均
 
         # cascade step
         for i in range(1, len(self.estimators_levels)):
@@ -88,10 +92,19 @@ class CascadeForest():
                 predict_ = estimator.predict(X_step)
                 predictions.append(predict_)
             attr_to_next_level = np.hstack(predictions)
+            self.proba_staged[i] = np.array(predictions).mean(axis=0)
 
-        # final step, calc prob
-        prediction_final = np.array(predictions).mean(axis=0)  # 不同estimator求平均
-        return prediction_final
+        return self.proba_staged
+
+    def predict_proba(self, X):
+        return self.predict_proba_staged(X)[-1]
+
+    def predict_staged(self, X):
+        proba_staged = self.predict_proba_staged(X)
+        predictions_staged = np.apply_along_axis(lambda proba: self.classes.take(np.argmax(proba), axis=0),
+                                                 2,
+                                                 proba_staged)
+        return predictions_staged
 
     def predict(self, X):
         proba = self.predict_proba(X)
