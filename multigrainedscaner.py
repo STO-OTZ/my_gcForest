@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.cross_validation import cross_val_predict as cvp
-
+from functools import reduce
 
 class MultiGrainedScaner():
     def __init__(self, base_estimator, params_list, sliding_ratio=0.25, k_fold=3):
